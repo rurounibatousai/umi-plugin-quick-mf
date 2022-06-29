@@ -8,7 +8,7 @@
     "build": "father-build"
   },
   "keywords": [],
-  "repository": "rurounibatousai/umi-plugin-quick-mf",
+  "repository": "https://github.com/rurounibatousai/umi-plugin-quick-mf",
   "authors": {
     "name": "rurounikenshin",
     "email": "half-mooncrack@live.cn"
