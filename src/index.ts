@@ -10,17 +10,23 @@ const setRemotesValuePromiseStyle = (usingComponentName: string): string => {
         cfgType,
         envType,
         root_domain: config_root_domain,
+        isIntranet,
       } = window.jusdaBaseConfig || {};
       const default_root_domain = '.jus-link.com';
       const default_envType = 'dev';
       const getEnvType = () => {
-        if(envType?.toLocaleLowerCase() === 'prod' || cfgType?.toLocaleLowerCase() === 'prod') return '';
-        return envType?.toLocaleLowerCase() || cfgType?.toLocaleLowerCase() || default_envType;
+        if(envType?.toLocaleLowerCase() === 'prod' || cfgType?.toLocaleLowerCase() === 'prod') {
+          if (isIntranet === true) {
+            return 'juslink'
+          }
+          return 'www'
+        };
+        return (isIntranet === true ? 'juslink' : '') +  (envType?.toLocaleLowerCase() || cfgType?.toLocaleLowerCase() || default_envType);
       };
       const getRootDomain = () => { 
         return config_root_domain || default_root_domain ;
       };
-      const mp_domain_prefix = 'https://mp'+ getEnvType()+getRootDomain();
+      const mp_domain_prefix = 'https://'+ getEnvType()+getRootDomain();
       return mp_domain_prefix
     }
     
@@ -30,14 +36,14 @@ const setRemotesValuePromiseStyle = (usingComponentName: string): string => {
         return mfUrl;
       }
       const urlConfig = getUrlConfig();
-      return urlConfig + '/mf/';
+      return urlConfig + '/mf';
     }
     
     const checkScriptPreLoadResult = (usingComponentName) => { // 预先加载将要加载的js，无论成功还是失败都resolve，只是成功是true，失败是false
       return new Promise((resolve) => {
         const tempScript = document.createElement('script');
         // @ts-ignore
-        tempScript.src = setRemoteBaseUrl() + usingComponentName + 'Entry.js'
+        tempScript.src = setRemoteBaseUrl() + '/' + usingComponentName + '/' + 'remoteEntry.js'
         document.head.appendChild(tempScript);
         tempScript.onload = () => {
           resolve(true);
@@ -50,20 +56,24 @@ const setRemotesValuePromiseStyle = (usingComponentName: string): string => {
     }
     
     const checkIsFailed = () => { // 通过检查dom树中是否有重复的加载失败js来控制加载失败的js只加载一次
-      const src = window.location.origin + '/jusdaMFErrorEntry.js';
+      const src = window.location.origin + '/remoteEntry.js';
       const collections = Array.from(document.querySelectorAll('script'));
       const result = collections.some(item => item.src === src);
       return result;
     }
     
     const resolveProxyObject = (usingComponentName, error) => {
+      // kebab-case transfer camelCase
+      const transferSpell = (source) => {
+        return source.replace(/-./g, (x) => x[1].toUpperCase());
+      };
       return {
         get: (req) => {
-          return window[usingComponentName].get(error ? './Error' : req)
+          return window[transferSpell(usingComponentName)].get(error ? './mfError' : req)
         },
         init: (arg) => {
           try {
-            return window[usingComponentName].init(arg)
+            return window[transferSpell(usingComponentName)].init(arg)
           } catch (e) {
             console.log('remote container already initialized')
           }
@@ -79,10 +89,10 @@ const setRemotesValuePromiseStyle = (usingComponentName: string): string => {
         proxyResult = resolveProxyObject(usingComponentName)
       } else if (!checkIsFailed()) {
         const { origin } = window.location;
-        script.src = origin + '/jusdaMFErrorEntry.js'
-        proxyResult = resolveProxyObject('jusdaMFError', true)
+        script.src = origin + '/remoteEntry.js'
+        proxyResult = resolveProxyObject('mfError', true)
       } else {
-        proxyResult = resolveProxyObject('jusdaMFError', true)
+        proxyResult = resolveProxyObject('mfError', true)
       }
       !preLoadResult && document.head.appendChild(script);
       return proxyResult;
@@ -113,105 +123,105 @@ const createFilesForHandleErrorComponent = (): void => {
         { recursive: true },
         (): void => {
             const fileContent = `import React, { CSSProperties, useEffect, useState } from 'react';
-        // @ts-ignore
-        const Error = React.lazy(() => import('jusdaMFError/Error'));
-        
-        const svgStyles: CSSProperties = {
-          width: '100%',
-          height: '30px',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          position: 'absolute',
-          zIndex: '2',
-        };
-        
-        const svgCircleElementStyles = {
-          stroke: '#ffc500',
-        };
-        
-        const Loading = () => (
-          <>
-            <svg
-              version="1.1"
-              id="L3"
-              xmlns="http://www.w3.org/2000/svg"
-              xmlnsXlink="http://www.w3.org/1999/xlink"
-              x="0px"
-              y="0px"
-              viewBox="0 0 100 100"
-              enableBackground="new 0 0 0 0"
-              xmlSpace="preserve"
-              style={svgStyles}
-            >
-              <circle
-                fill="none"
-                stroke="#fff"
-                strokeWidth="4"
-                cx="50"
-                cy="50"
-                r="44"
-                style={svgCircleElementStyles}
-              />
-              <circle
-                fill="#fff"
-                stroke="#e74c3c"
-                strokeWidth="3"
-                cx="8"
-                cy="54"
-                r="6"
-                style={svgCircleElementStyles}
-              >
-                <animateTransform
-                  attributeName="transform"
-                  dur="2s"
-                  type="rotate"
-                  from="0 50 48"
-                  to="360 50 52"
-                  repeatCount="indefinite"
-                />
-              </circle>
-            </svg>
-          </>
-        );
-        
-        // 传递想要加载的组件
-        const DynamicMFComponents = (props: any) => {
-            const { children } = props;
-            const [shouldShowError, setShouldShowError] = useState(false);
-
-            const determineComponentLoaded = (condition: any) => {
-                if (condition._result.then) {
-                    // 由于_result在最初加载时是一个promise则判断是否存在then方法
-                    condition._result.then(() => {
-                        setShouldShowError(condition._status !== 1);
-                    });
-                } else if (condition._result === 'function') {
-                    // 加载完毕之后_result是一个Module function
-                    setShouldShowError(condition._status !== 1);
-                } else {
-                    setShouldShowError(condition._status !== 1);
-                }
-            }
-
-            useEffect(() => {
-                // 为了兼容两个版本不一致的情况 优先判断版本不一致的情况
-                if (children.type._payload) {
-                    determineComponentLoaded(children.type._payload)
-                } else {
-                    determineComponentLoaded(children.type)
-                }
-            }, [props]);
-
-            return (
-                <React.Suspense fallback={<Loading />}>
-                    {shouldShowError ? <Error /> : children}
-                </React.Suspense>
+            // @ts-ignore
+            const Error = React.lazy(() => import('mfError/Error'));
+            
+            const svgStyles: CSSProperties = {
+              width: '100%',
+              height: '30px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              position: 'absolute',
+              zIndex: '2',
+            };
+            
+            const svgCircleElementStyles = {
+              stroke: '#ffc500',
+            };
+            
+            const Loading = () => (
+              <>
+                <svg
+                  version="1.1"
+                  id="L3"
+                  xmlns="http://www.w3.org/2000/svg"
+                  xmlnsXlink="http://www.w3.org/1999/xlink"
+                  x="0px"
+                  y="0px"
+                  viewBox="0 0 100 100"
+                  enableBackground="new 0 0 0 0"
+                  xmlSpace="preserve"
+                  style={svgStyles}
+                >
+                  <circle
+                    fill="none"
+                    stroke="#fff"
+                    strokeWidth="4"
+                    cx="50"
+                    cy="50"
+                    r="44"
+                    style={svgCircleElementStyles}
+                  />
+                  <circle
+                    fill="#fff"
+                    stroke="#e74c3c"
+                    strokeWidth="3"
+                    cx="8"
+                    cy="54"
+                    r="6"
+                    style={svgCircleElementStyles}
+                  >
+                    <animateTransform
+                      attributeName="transform"
+                      dur="2s"
+                      type="rotate"
+                      from="0 50 48"
+                      to="360 50 52"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </svg>
+              </>
             );
-        };
-
-        export default DynamicMFComponents;
-        `;
+            
+            // 传递想要加载的组件
+            const DynamicMFComponents = (props: any) => {
+                const { children } = props;
+                const [shouldShowError, setShouldShowError] = useState(false);
+    
+                const determineComponentLoaded = (condition: any) => {
+                    if (condition._result.then) {
+                        // 由于_result在最初加载时是一个promise则判断是否存在then方法
+                        condition._result.then(() => {
+                            setShouldShowError(condition._status !== 1);
+                        });
+                    } else if (condition._result === 'function') {
+                        // 加载完毕之后_result是一个Module function
+                        setShouldShowError(condition._status !== 1);
+                    } else {
+                        setShouldShowError(condition._status !== 1);
+                    }
+                }
+    
+                useEffect(() => {
+                    // 为了兼容两个版本不一致的情况 优先判断版本不一致的情况
+                    if (children.type._payload) {
+                        determineComponentLoaded(children.type._payload)
+                    } else {
+                        determineComponentLoaded(children.type)
+                    }
+                }, [props]);
+    
+                return (
+                    <React.Suspense fallback={<Loading />}>
+                        {shouldShowError ? <Error /> : children}
+                    </React.Suspense>
+                );
+            };
+    
+            export default DynamicMFComponents;
+            `;
             fs.writeFileSync(
                 './src/components/dynamic-mf-components/index.tsx',
                 fileContent,
@@ -256,18 +266,16 @@ const setExposesFiledToArray = (exposes: {
 }): ExposesToArray[] => {
     let exposesArray = [];
     let exposesComponentWithError = {
-        './Error': './src/mf-error',
+        './mfError': './src/mf-error',
         ...exposes,
     };
     for (let key in exposesComponentWithError) {
-    // key形似 './Button' value形似 './src/xx/xx'
-    // 设置暴露出来的js名称为 key+'Entry.js' 全局变量名为：jusdaMF + key
         const tempKey = key.replace('./', '');
         const tempExposes = {};
         tempExposes[key] = exposesComponentWithError[key];
         exposesArray.push({
-            name: `jusdaMF${tempKey}`,
-            filename: `jusdaMF${tempKey}Entry.js`,
+            name: tempKey,
+            filename: 'remoteEntry.js',
             exposes: {
                 ...tempExposes,
             },
@@ -277,16 +285,21 @@ const setExposesFiledToArray = (exposes: {
     return exposesArray;
 };
 
+// kebab-case transfer camelCase
+const transferSpell = (source: string): string => {
+    return source.replace(/-./g, (x: string): string => x[1].toUpperCase());
+};
+
 const setRemotesFieldToPromiseStyle = (
     remotes: object[] | string[] = [],
     name: string,
 ): object => {
     let dealWithRemotes = {};
-    const remotesComponentWithError = [...remotes, 'Error'];
+    const remotesComponentWithError = [...remotes, 'mf-error'];
     for (let item of remotesComponentWithError) {
         if (typeof item === 'string') {
             let temp = {};
-            temp[`jusdaMF${item}`] = setRemotesValuePromiseStyle(`jusdaMF${item}`);
+            temp[transferSpell(item)] = setRemotesValuePromiseStyle(item);
             dealWithRemotes = {
                 ...dealWithRemotes,
                 ...temp,
@@ -305,10 +318,10 @@ const setRemotesFieldToPromiseStyle = (
     };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const setWebpackChain = (
     config: WebpackChain,
     api: IApi,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     webpack: any,
 ): WebpackChain => {
     config.output.publicPath('auto');
@@ -344,7 +357,7 @@ const setWebpackChain = (
                 .use('dts-loader')
                 .loader('dts-loader')
                 .options({
-                    name: `jusdaMF${unkey}`,
+                    name: `${unkey}`,
                     exposes: expose,
                 })
                 .end();
@@ -374,15 +387,19 @@ const setWebpackChain = (
     }
     // 单独设置一个remotes的module-federation实例
     config.plugin(name).use(ModuleFederationPlugin, [remotesComponents]);
-    if (getTypesConfig) {
+    if (getTypesConfig && api.env === 'development') { // 只有开发环境才需要types，则这份types从dev.jus-link.com/mf/[componentName]-dts.tgz下载
         for (const remote of remotes) {
-            config.plugin(remote).use(WebpackRemoteTypesPlugin, [
+            const temp = {};
+            (temp[transferSpell(remote)] = getTypesConfig.url
+                ? `${remote}@${getTypesConfig.url}`
+                : `${remote}@https://dev.jus-link.com/mf/${remote}/`),
+            config.plugin(transferSpell(remote)).use(WebpackRemoteTypesPlugin, [
                 {
-                    remotes: {
-                        jusdaMF: getTypesConfig.url ? `jusdaMF${remote}@${getTypesConfig.url}` : `jusdaMF${remote}@http://localhost:3000/`
-                    },
-                    outputDir: getTypesConfig.unpackagePath ? getTypesConfig.unpackagePath : 'types/mf',
-                    remoteFileName: '[name]-dts.tgz',
+                    remotes: { ...temp },
+                    outputDir: getTypesConfig.unpackagePath
+                        ? getTypesConfig.unpackagePath
+                        : 'types/mf',
+                    remoteFileName: `${transferSpell(remote)}-dts.tgz`,
                 },
             ]);
         }
@@ -405,7 +422,7 @@ export default function (api: IApi): void {
                     shareTypesPath: joi.array(),
                     getTypesConfig: joi.object({
                         url: joi.string(),
-                        typePath: joi.string()
+                        unpackagePath: joi.string(),
                     }),
                 });
             },
